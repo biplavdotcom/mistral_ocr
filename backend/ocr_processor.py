@@ -47,12 +47,18 @@ def extract_raw_text_from_pdf(file_path):
 
     return chat_response.choices[0].message.content
 
-def extract_vendor_details(raw_text):
+def extract_vendor_details(raw_text, user_prompt=""):
+    if user_prompt.strip():
+        full_prompt = f"""
+        {user_prompt.strip()}
+Text:
+{raw_text}
 
-    messages = [
-        {
-            "role": "user",
-            "content": f"""You are an expert document parser specializing in commercial documents like invoices, bills, etc.Extract the following structured data from the document text:
+Important: Return ONLY the JSON object. NO explanations, no headings,no extra text.
+"""
+    else:
+        full_prompt = f"""
+        You are an expert document parser specializing in commercial documents like invoices, bills, etc.Extract the following structured data from the document text:
                 - vendor_details: name, address, phone, email, website, PAN
                 - customer_details: name, address, contact, PAN (usually below vendor_details)
                 - invoice_details: bill_number, bill_date, transaction_date, mode_of_payment, finance_manager, authorized_signatory
@@ -114,8 +120,14 @@ def extract_vendor_details(raw_text):
 
                             Important: Return ONLY the JSON object. No explanations, no headings, no extra text.
 """
+
+    messages = [
+        {
+            "role": "user",
+            "content": full_prompt
         }
     ]
+
     chat_response = client.chat.complete(
         model=model,
         messages=messages
@@ -129,7 +141,7 @@ def process_file(file_path, user_prompt="") -> OCRResponse:
     else:
         return OCRResponse(status="failed", message="Unsupported file type")
     
-    result = extract_vendor_details(text)
+    result = extract_vendor_details(text, user_prompt)
     return OCRResponse(
         status="success",
         message="Text extracted and structured successfully",
