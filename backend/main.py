@@ -4,7 +4,8 @@ from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
 import os
 import shutil
-
+from .database import collection, update_id
+from datetime import datetime
 
 app = FastAPI()
 
@@ -18,6 +19,10 @@ templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
 UPLOAD_DIR = os.path.join(current_dir, "temp_files")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+def format_datetime(dt):
+    """Format datetime to a readable string"""
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -30,8 +35,28 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
             shutil.copyfileobj(file.file, buffer)
         
         result = process_file(file_path, prompt)
+        total_uploads = collection.count_documents({"file_name": {"$exists":True}})
+        print(total_uploads)
+        if prompt:
+            structure = {
+                "file_name": file.filename,
+                "document_id": total_uploads+1,
+                "prompt_type": "user_given_prompt",
+                "prompt": prompt,
+                "extracted_details": result.content,
+                "uploaded_at": format_datetime(datetime.now())
+            }
+        else:
+            structure = {
+                "file_name": file.filename,
+                "document_id": total_uploads+1,
+                "prompt_type": "default_prompt",
+                "extracted_details": result.content,
+                "uploaded_at": format_datetime(datetime.now())
+            }
+        collection.insert_one(structure)
 
-
+        
         os.remove(file_path)
 
         if result.status == "success":
@@ -52,3 +77,89 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
             {"request": request, "error": str(e), "success": False}
         )
 
+@app.get("/text-extraction/pdf")
+async def get_all_extractions(file:str = None):
+    if file:
+        if not file.endswith('.pdf'):
+            filename = f"{file}.pdf"
+            document_find = list(collection.find(({"file_name": filename}), {'_id': 0}))
+            return {'documents': document_find}
+    else:
+        all_extractions = list(collection.find(({"file_name":{"$exists": True}}),{'_id':0,'default_prompt':0}))
+        # for item in all_extractions:
+        #     item['_id'] = str(item['_id'])
+        return {'documents': all_extractions}
+
+@app.delete("/delete/{file}")
+async def delete_extraction(file: str):
+    try:
+        if not file.endswith('.pdf'):
+            filename = f"{file}.pdf"
+        result = collection.delete_one({"file_name": filename})
+        total_uploads = collection.count_documents({"file_name": {"$exists":True}})
+        update_id()
+        if result.deleted_count == 0:
+            return JSONResponse(
+                status_code=404,
+                content={"message": f"No file found with name: {file}"}
+            )
+        return JSONResponse(
+            status_code=200,
+            content={"message": f"File {file}.pdf deleted successfully"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"Error deleting file: {str(e)}"}
+        )
+    
+@app.put("/update-prompt")
+async def update_prompt(doc_id: int, prompt: str):
+    try:
+        document = collection.find_one({
+            "document_id": doc_id,
+            "prompt_type": "user_given_prompt"
+        })
+        
+        if not document:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "message": "Document not found or is not a user-given prompt document"
+                }
+            )
+        
+        result = collection.update_one(
+            {"document_id": doc_id},
+            {"$set": {"prompt": prompt}}
+        )
+        
+        if result.modified_count > 0:
+            return JSONResponse(
+                status_code=200,
+                content={"message": f"Prompt updated successfully for document {doc_id}"}
+            )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "No changes were made to the document"}
+            )
+            
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"Error updating prompt: {str(e)}"}
+        )    
+    
+@app.get("/default-prompts")
+async def get_default_prompts():
+    try:
+        default_prompt = list(collection.find({"default_type": {"$exists": True}},{"_id": 0}))
+        if not default_prompt:
+            return {"message": "No default prompts found"}
+        else:
+            return default_prompt
+    except Exception as e:
+        return{
+            "error": str(e)
+        } 

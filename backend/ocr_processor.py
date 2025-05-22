@@ -2,6 +2,7 @@ import os
 from mistralai import Mistral
 from dotenv import load_dotenv
 from .models import OCRResponse
+from .database import collection, add_default_prompt
 
 load_dotenv()
 api_key = os.environ["MISTRAL_API_KEY"]
@@ -57,7 +58,7 @@ Text:
 Important: Return ONLY the JSON object. NO explanations, no headings,no extra text.
 """
     else:
-        full_prompt = f"""
+        prompt_template = f"""
         You are an expert document parser specializing in commercial documents like invoices, bills, etc.Extract the following structured data from the document text:
                 - vendor_details: name, address, phone, email, website, PAN
                 - customer_details: name, address, contact, PAN (usually below vendor_details)
@@ -114,12 +115,14 @@ Important: Return ONLY the JSON object. NO explanations, no headings,no extra te
                                 }}
                               ]
                             }}
-
+                            """
+        add_default_prompt(prompt_template)
+        full_prompt = prompt_template + f"""
                             Text:
                             {raw_text}
 
                             Important: Return ONLY the JSON object. No explanations, no headings, no extra text.
-"""
+    """
 
     messages = [
         {
@@ -127,6 +130,7 @@ Important: Return ONLY the JSON object. NO explanations, no headings,no extra te
             "content": full_prompt
         }
     ]
+
 
     chat_response = client.chat.complete(
         model=model,
@@ -142,6 +146,8 @@ def process_file(file_path, user_prompt="") -> OCRResponse:
         return OCRResponse(status="failed", message="Unsupported file type")
     
     result = extract_vendor_details(text, user_prompt)
+
+
     return OCRResponse(
         status="success",
         message="Text extracted and structured successfully",
