@@ -6,7 +6,6 @@ client = MongoClient(uri)
 db = client["ocr_prompts"]
 collection = db["prompts"]
     
-# Check if collection exists, if not create it
 if "prompts" not in db.list_collection_names():
     db.create_collection("prompts")
 
@@ -16,10 +15,8 @@ def add_default_prompt(prompt):
 
 def update_id():
     try:
-        # Get count of documents with file_name
         total_docs = collection.count_documents({"file_name": {"$exists": True}})
         
-        # Get all documents with file_name in order
         documents = list(collection.find(
             {"file_name": {"$exists": True}},
             sort=[("uploaded_at", 1)]
@@ -33,7 +30,6 @@ def update_id():
                     {"$set": {"document_id": i}}
                 )
             else:
-                # Remove document_id if it exceeds the count
                 collection.update_one(
                     {"_id": doc["_id"]},
                     {"$unset": {"document_id": ""}}

@@ -6,6 +6,7 @@ import os
 import shutil
 from .database import collection, update_id
 from datetime import datetime
+import json
 
 app = FastAPI()
 
@@ -36,11 +37,13 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         
         result = process_file(file_path, prompt)
         total_uploads = collection.count_documents({"file_name": {"$exists":True}})
-        print(total_uploads)
+        
+  
+        
         if prompt:
             structure = {
                 "file_name": file.filename,
-                "document_id": total_uploads+1,
+                "uid": total_uploads+1,
                 "prompt_type": "user_given_prompt",
                 "prompt": prompt,
                 "extracted_details": result.content,
@@ -49,32 +52,41 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         else:
             structure = {
                 "file_name": file.filename,
-                "document_id": total_uploads+1,
+                "uid": total_uploads+1,
                 "prompt_type": "default_prompt",
                 "extracted_details": result.content,
                 "uploaded_at": format_datetime(datetime.now())
             }
         collection.insert_one(structure)
-
         
         os.remove(file_path)
 
         if result.status == "success":
-            return templates.TemplateResponse(
-                "index.html",
-                {"request": request, "content": result.content, "success": True, "extracted": result.extracted_text}
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "message": "Text extracted and structured successfully",
+                    "content": result.content,
+                    "extracted_text": result.extracted_text
+                }
             )
         else:
-            return templates.TemplateResponse(
-                "index.html",
-                {"request": request, "error": result.message, "success": False}
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": result.message
+                }
             )
 
-       
     except Exception as e:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "error": str(e), "success": False}
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e)
+            }
         )
 
 @app.get("/text-extraction/pdf")
@@ -89,6 +101,7 @@ async def get_all_extractions(file:str = None):
         # for item in all_extractions:
         #     item['_id'] = str(item['_id'])
         return {'documents': all_extractions}
+
 
 @app.delete("/delete/{file}")
 async def delete_extraction(file: str):

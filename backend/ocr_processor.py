@@ -55,11 +55,11 @@ def extract_vendor_details(raw_text, user_prompt=""):
 Text:
 {raw_text}
 
-Important: Return ONLY the JSON object. NO explanations, no headings,no extra text.
+Important: Return ONLY the raw JSON object without any markdown formatting or code blocks. NO explanations, no headings, no extra text.
 """
     else:
         prompt_template = f"""
-        You are an expert document parser specializing in commercial documents like invoices, bills, etc.Extract the following structured data from the document text:
+        You are an expert document parser specializing in commercial documents like invoices, bills, etc. Extract the following structured data from the document text and return it as pure JSON without any markdown formatting or code blocks:
                 - vendor_details: name, address, phone, email, website, PAN
                 - customer_details: name, address, contact, PAN (usually below vendor_details)
                 - invoice_details: bill_number, bill_date, transaction_date, mode_of_payment, finance_manager, authorized_signatory
@@ -72,6 +72,7 @@ Important: Return ONLY the JSON object. NO explanations, no headings,no extra te
                         4. Each line_item must include hs_code and description; qty, rate, and amount are optional.
                         5. Always return the result strictly in the following JSON structure.
                         6. PAN numbers are typically boxed or near labels like 'PAN No.', and follow a 9-digit (Nepal) format.
+                        7. Return pure JSON without any markdown formatting or code blocks.
 
                         Return the structured data using this exact JSON format:
                         {{
@@ -121,7 +122,7 @@ Important: Return ONLY the JSON object. NO explanations, no headings,no extra te
                             Text:
                             {raw_text}
 
-                            Important: Return ONLY the JSON object. No explanations, no headings, no extra text.
+                            Important: Return ONLY the raw JSON object without any markdown formatting or code blocks. No explanations, no headings, no extra text.
     """
 
     messages = [
@@ -131,12 +132,16 @@ Important: Return ONLY the JSON object. NO explanations, no headings,no extra te
         }
     ]
 
-
     chat_response = client.chat.complete(
         model=model,
         messages=messages
     )
-    return chat_response.choices[0].message.content
+    # return chat_response.choices[0].message.content
+    content = chat_response.choices[0].message.content
+    # Remove ```json and ``` if present
+    content = content.replace('```json', '').replace('```', '').strip()
+    
+    return content
 
 
 def process_file(file_path, user_prompt="") -> OCRResponse:
