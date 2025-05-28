@@ -4,9 +4,14 @@ from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
 import os
 import shutil
+from datetime import datetime
 
 
-app = FastAPI()
+app = FastAPI(
+    title="Mistral OCR API",
+    description="OCR service using Mistral AI",
+    version="1.0.0"
+)
 
 # Get the current directory path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,6 +22,19 @@ templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
 # Directory to store uploaded files
 UPLOAD_DIR = os.path.join(current_dir, "temp_files")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for the application.
+    Returns the current status and timestamp.
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "mistral-ocr",
+        "version": "1.0.0"
+    }
 
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request):
