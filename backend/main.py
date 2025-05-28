@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
+from backend.classification import get_gemini_model, classify_invoice, invoice_data, extracted_file_from
 import os
 import shutil
 from .database import collection, update_id
@@ -176,3 +177,29 @@ async def get_default_prompts():
         return{
             "error": str(e)
         } 
+
+@app.get("/classification")
+async def classify_document():
+    try:
+        # Get the Gemini model
+        model = get_gemini_model()
+        
+        # Classify the invoice
+        classification_result = classify_invoice(invoice_data, model)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "classification": classification_result,
+                "filename": extracted_file_from
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e)
+            }
+        )    
