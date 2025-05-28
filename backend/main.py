@@ -8,7 +8,7 @@ import shutil
 from .database import collection, update_id
 from datetime import datetime
 import json
-
+from typing import Union
 app = FastAPI()
 
 # Get the current directory path
@@ -30,13 +30,13 @@ async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/upload")
-async def upload_file(request: Request, file: UploadFile = File(...), prompt: str = Form(...)):
+async def upload_file(request: Request, file: UploadFile = File(...), prompt: str = Form(None) ):
     try:
         file_path = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        result = process_file(file_path, prompt)
+        result = process_file(file_path, prompt or "")
         total_uploads = collection.count_documents({"file_name": {"$exists":True}})
         
   
@@ -181,10 +181,7 @@ async def get_default_prompts():
 @app.get("/classification")
 async def classify_document():
     try:
-        # Get the Gemini model
         model = get_gemini_model()
-        
-        # Classify the invoice
         classification_result = classify_invoice(invoice_data, model)
         
         return JSONResponse(
