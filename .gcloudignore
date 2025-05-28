@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+*.log
+docker-compose*
+.dockerignore
+README.md
+*.md
+tests/
+.pytest_cache/
+.coverage
+htmlcov/ 
