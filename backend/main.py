@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
-from backend.classification import get_gemini_model, classify_invoice, extracted_file_from, invoice_data_dict
+from backend.classification import parse_invoice_json, classify_invoice, get_gemini_model, raw_json_string
 import os
 import shutil
 from .database import collection
@@ -72,8 +72,8 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         os.remove(file_path)
 
         if result.status == "success":
-            document = collection.find_one({"file_name": file.filename})
-            file_id = str(document["_id"])
+            document = collection.find_one({"file_name": file.filename}, sort = [("uid", -1)])
+            document_id = document["uid"]
             
             return JSONResponse(
                 status_code=200,
@@ -82,7 +82,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
                     "message": "Text extracted and structured successfully",
                     "content": result.content,
                     "extracted_text": result.extracted_text,
-                    "file_id": file_id
+                    "document_id": document_id
                 }
             )   
         else:
@@ -103,6 +103,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
             }
         )
     
+
 
 @app.get("/text-extraction/pdf")
 async def get_all_extractions(file:str = None):
@@ -191,21 +192,29 @@ async def get_default_prompts():
             "error": str(e)
         } 
 
-@app.get("/classification")
-async def classify_document():
+@app.get("/classification/{document_id}")
+async def classify_document(document_id: int):
     try:
-        model = get_gemini_model()
-        classification_result = classify_invoice(invoice_data_dict, model)
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "success",
-                "classification": classification_result,
-                "filename": extracted_file_from
-                # "jsonString": invoice_data_dict
-            }
-        )
+        # Get the document from MongoDB using document_id
+        document = collection.find_one({"uid": document_id},{"extracted_details":1, "_id": 0 })
+        raw = json.dumps(document)
+        invoice_data_dict = parse_invoice_json(raw)
+
+        if invoice_data_dict:
+            model = get_gemini_model()
+            classification_result = classify_invoice(invoice_data_dict, model)
+            print("\n📄 Document Type:", classification_result)
+                
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "classification": classification_result,
+                    "document_id": document_id,
+                    "file_name": document.get("file_name"),
+                    "detail": raw
+                }
+            )
     except Exception as e:
         return JSONResponse(
             status_code=500,

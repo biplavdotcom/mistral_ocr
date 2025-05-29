@@ -3,7 +3,7 @@ from mistralai import Mistral
 from dotenv import load_dotenv
 from .models import OCRResponse
 from .database import collection, add_default_prompt
-import re
+import re, json
 
 load_dotenv()
 api_key = os.environ["MISTRAL_API_KEY"]
@@ -73,55 +73,56 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
                         4. Each line_item must include hs_code and description; qty, rate, and amount are optional.
                         5. Always return the result strictly in the following JSON structure.
                         6. PAN numbers are typically boxed or near labels like 'PAN No.', and follow a 9-digit (Nepal) format.
-                        7. Return pure JSON without any markdown formatting or code blocks.
+                        7. Return  JSON without any markdown formatting or code blocks.
 
-                        Return the structured data using this exact JSON format:
+                        Return the standard structured JSON format shown below:
                         {{
                             "vendor_details": {{
-                              "name": "...",
-                              "address": "...", 
-                              "phone": "...", 
-                              "email": "...",
-                              "website": "...",
-                              "pan": "..."
+                              "name": "",
+                              "address": "", 
+                              "contact_number": "", 
+                              "email": "",
+                              "website": "",
+                              "pan_number": "" // This is the pan number/ VAT number of a company
                             }},
                             "customer_details": {{
-                                "name": "...",
-                                "address": "...",
-                                "contact": "...",
-                                "pan": "..."
+                                "name": "",
+                                "address": "",
+                                "contact_number": "",
+                                "pan_number": ""// This is the pan number/ VAT number of a company
                               }},
                               "invoice_details": {{
-                                "bill_number": "...",
-                                "bill_date": "...",
-                                "transaction_date": "...",
-                                "mode_of_payment": "...",
-                                "finance_manager": "...",
-                                "authorized_signatory": "...",
-                                "lc_no": "..."
+                                "bill_number": "",
+                                "bill_date": "",
+                                "transaction_date": "",
+                                "mode_of_payment": "",
+                                "finance_manager": "",
+                                "authorized_signatory": "",
+                                "lc_no": "" // This is the letter of credit number of the company 
                               }},
                               "payment_details": {{
-                                "total": 0,
-                                "in_words": "...",
-                                "discount": 0,
-                                "taxable_amount": 0,
-                                "vat": 0,
-                                "net_amount": 0
+                                "total_amount": "",
+                                "total_amount_in_words": "",
+                                "discount_amount": "" ,
+                                "taxable_amount": "" ,
+                                "vat_percentage": "",
+                                "vat_amount": "",
+                                "net_amount": ""
                               }},
                               "line_items": [
                                 {{
-                                  "hs_code": "...",
-                                  "particulars": "...",
-                                  "qty": "...",
-                                  "rate": "...",
-                                  "amount": "..."
+                                  "hs_code": "",
+                                  "particulars": "",
+                                  "quantity": "",
+                                  "rate": "",
+                                  "amount": ""
                                 }}
                               ]
                             }}
                             Text:
                             {raw_text}
 
-                            Important: Return ONLY the raw JSON object without any markdown formatting or code blocks. No explanations, no headings, no extra text.
+                            Important: Return ONLY the standard JSON schema object without any markdown formatting or code blocks. No explanations, no headings, no extra text.
                             """
         add_default_prompt(prompt_template)
     #     full_prompt = prompt_template + f"""
@@ -142,13 +143,12 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
         model=model,
         messages=messages
     )
-    # return chat_response.choices[0].message.content
     output = chat_response.choices[0].message.content
     # Remove ```json and ``` if present
     # content = content.replace('```json', '').replace('```', '').strip()
-    result = re.sub(r"^(?:json)?\s*|\s*$", "", output.strip())
-
-    return result
+    # result = re.sub(r"^(?:json)?\s*|\s*$", "", output.strip())
+    print(f"Response of extaction: {type(output)}")
+    return output
 
 #     if user_prompt.strip():
 #             full_prompt = f"""
