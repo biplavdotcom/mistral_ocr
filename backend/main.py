@@ -33,22 +33,6 @@ def format_datetime(dt):
 async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/get_raw_data")
-async def get_raw_data(filename: str = None):
-    """Get raw data from the most recently uploaded file"""
-    if filename is None:
-        filename = recent_filename
-    if filename is None:
-        return JSONResponse({"error": "No file has been uploaded yet"}, status_code=400)
-    
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(file_path):
-        return JSONResponse({"error": "File not found"}, status_code=404)
-    
-    with open(file_path, "r") as f:
-        content = f.read()
-    return JSONResponse({"filename": filename, "content": content})
-
 @app.post("/extract")
 async def upload_file(request: Request, file: UploadFile = File(...), prompt: str = Form(None) ):
     try:
@@ -58,10 +42,11 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         
         result = process_file(file_path, prompt or "")
         total_uploads = collection.count_documents({"file_name": {"$exists":True}})
-        print(type(result.content))
-        print(result.content)
-        print(type(result.extracted_text))
-        print(result.extracted_text)
+
+        # print(type(result.content))
+        # print(result.content)
+        # print(type(result.extracted_text))
+        # print(result.extracted_text)
         
         if prompt:
             structure = {
@@ -87,15 +72,19 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         os.remove(file_path)
 
         if result.status == "success":
+            document = collection.find_one({"file_name": file.filename})
+            file_id = str(document["_id"])
+            
             return JSONResponse(
                 status_code=200,
                 content={
                     "status": "success",
                     "message": "Text extracted and structured successfully",
                     "content": result.content,
-                    "extracted_text": result.extracted_text
+                    "extracted_text": result.extracted_text,
+                    "file_id": file_id
                 }
-            )
+            )   
         else:
             return JSONResponse(
                 status_code=400,

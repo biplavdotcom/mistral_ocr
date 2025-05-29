@@ -99,5 +99,5 @@ model = get_gemini_model()
 
 classification_result = classify_invoice(invoice_data_dict, model)
 
-print("📄 Document Type:", classification_result)
-print(type(raw_json))
+# print("📄 Document Type:", classification_result)
+# print(type(raw_json))
