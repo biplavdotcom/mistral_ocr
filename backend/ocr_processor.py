@@ -250,7 +250,6 @@ def process_file(file_path, user_prompt="") -> OCRResponse:
     
     result = extract_vendor_details(text, user_prompt)
 
-
     return OCRResponse(
         status="success",
         message="Text extracted and structured successfully",
