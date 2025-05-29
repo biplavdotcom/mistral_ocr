@@ -3,6 +3,7 @@ from mistralai import Mistral
 from dotenv import load_dotenv
 from .models import OCRResponse
 from .database import collection, add_default_prompt
+import re
 
 load_dotenv()
 api_key = os.environ["MISTRAL_API_KEY"]
@@ -96,7 +97,8 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
                                 "transaction_date": "...",
                                 "mode_of_payment": "...",
                                 "finance_manager": "...",
-                                "authorized_signatory": "..."
+                                "authorized_signatory": "...",
+                                "lc_no": "..."
                               }},
                               "payment_details": {{
                                 "total": 0,
@@ -141,11 +143,13 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
         messages=messages
     )
     # return chat_response.choices[0].message.content
-    content = chat_response.choices[0].message.content
+    output = chat_response.choices[0].message.content
     # Remove ```json and ``` if present
-    content = content.replace('```json', '').replace('```', '').strip()
-    
-    return content
+    # content = content.replace('```json', '').replace('```', '').strip()
+    result = re.sub(r"^(?:json)?\s*|\s*$", "", output.strip())
+
+    return result
+
 #     if user_prompt.strip():
 #             full_prompt = f"""
 #             {user_prompt.strip()}

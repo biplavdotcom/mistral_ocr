@@ -2,13 +2,17 @@ from fastapi import FastAPI, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
-from backend.classification import get_gemini_model, classify_invoice, invoice_data, extracted_file_from
+from backend.classification import get_gemini_model, classify_invoice, extracted_file_from, invoice_data_dict
 import os
 import shutil
-from .database import collection, update_id
+from .database import collection
 from datetime import datetime
 import json
 from typing import Union
+
+# Global variable to store the most recent filename
+recent_filename = None
+
 app = FastAPI()
 
 # Get the current directory path
@@ -29,7 +33,23 @@ def format_datetime(dt):
 async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/upload")
+@app.get("/get_raw_data")
+async def get_raw_data(filename: str = None):
+    """Get raw data from the most recently uploaded file"""
+    if filename is None:
+        filename = recent_filename
+    if filename is None:
+        return JSONResponse({"error": "No file has been uploaded yet"}, status_code=400)
+    
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(file_path):
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    
+    with open(file_path, "r") as f:
+        content = f.read()
+    return JSONResponse({"filename": filename, "content": content})
+
+@app.post("/extract")
 async def upload_file(request: Request, file: UploadFile = File(...), prompt: str = Form(None) ):
     try:
         file_path = os.path.join(UPLOAD_DIR, file.filename)
@@ -38,8 +58,10 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         
         result = process_file(file_path, prompt or "")
         total_uploads = collection.count_documents({"file_name": {"$exists":True}})
-        
-  
+        print(type(result.content))
+        print(result.content)
+        print(type(result.extracted_text))
+        print(result.extracted_text)
         
         if prompt:
             structure = {
@@ -47,6 +69,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
                 "uid": total_uploads+1,
                 "prompt_type": "user_given_prompt",
                 "prompt": prompt,
+                "raw_text": result.extracted_text,
                 "extracted_details": result.content,
                 "uploaded_at": format_datetime(datetime.now())
             }
@@ -55,6 +78,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
                 "file_name": file.filename,
                 "uid": total_uploads+1,
                 "prompt_type": "default_prompt",
+                "raw_text": result.extracted_text,
                 "extracted_details": result.content,
                 "uploaded_at": format_datetime(datetime.now())
             }
@@ -89,6 +113,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
                 "message": str(e)
             }
         )
+    
 
 @app.get("/text-extraction/pdf")
 async def get_all_extractions(file:str = None):
@@ -111,7 +136,6 @@ async def delete_extraction(file: str):
             filename = f"{file}.pdf"
         result = collection.delete_one({"file_name": filename})
         total_uploads = collection.count_documents({"file_name": {"$exists":True}})
-        update_id()
         if result.deleted_count == 0:
             return JSONResponse(
                 status_code=404,
@@ -182,7 +206,7 @@ async def get_default_prompts():
 async def classify_document():
     try:
         model = get_gemini_model()
-        classification_result = classify_invoice(invoice_data, model)
+        classification_result = classify_invoice(invoice_data_dict, model)
         
         return JSONResponse(
             status_code=200,
@@ -190,6 +214,7 @@ async def classify_document():
                 "status": "success",
                 "classification": classification_result,
                 "filename": extracted_file_from
+                # "jsonString": invoice_data_dict
             }
         )
     except Exception as e:
