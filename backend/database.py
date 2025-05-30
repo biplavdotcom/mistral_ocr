@@ -1,8 +1,12 @@
+import os
+from dotenv import load_dotenv
 from pymongo import MongoClient
 
-uri = "mongodb://localhost:27017/" 
-client = MongoClient(uri)
+load_dotenv()
 
+mongodb_uri = os.getenv("MONGODB_URI")
+
+client = MongoClient(mongodb_uri)
 db = client["ocr_prompts"]
 collection = db["prompts"]
     

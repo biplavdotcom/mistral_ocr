@@ -106,25 +106,24 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
                               "invoice_details": {{
                                 "bill_number": "",
                                 "bill_date": "",
-                                "transaction_date": "",
                                 "mode_of_payment": "",
                                 "finance_manager": "",
                                 "authorized_signatory": "",
                                 "lc_no": "" // This is the letter of credit number of the company 
                               }},
                               "payment_details": {{
-                                "total_amount": "",
-                                "total_amount_in_words": "",
-                                "discount_amount": "" ,
-                                "taxable_amount": "" ,
-                                "vat_percentage": "",
-                                "vat_amount": "",
-                                "net_amount": ""
+                                "net_amount": "",  // It can also be taxable total amount or this is the before taxes discount and vat
+                                "discount_amount": "" , // this should be in amount not percentage
+                                "taxable_amount": "" , // this should be in amount not percentage and it is after taxes
+                                "vat_percentage": "", // this should be in percentage
+                                "vat_amount": "", // this should be in amount not percentage it is only the vat percentage of the net amount
+                                "grand_total": "",  // This is the last amount after all calculations such as after adding vat_amount taxable_amount and decreasing discount_amount and the amount should be equal to total amount in words
+                                "grand_total_in_words": "",
                               }},
                               "line_items": [
                                 {{
                                   "hs_code": "",
-                                  "particulars": "",
+                                  "products": "", // This is the line items of a bill in a tabular for which can be a product or a service
                                   "quantity": "",
                                   "rate": "",
                                   "amount": ""
@@ -137,12 +136,6 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
                             Important: Return ONLY the standard JSON schema object without any markdown formatting or code blocks. No explanations, no headings, no extra text.
                             """
         add_default_prompt(prompt_template)
-    #     full_prompt = prompt_template + f"""
-    #                         Text:
-    #                         {raw_text}
-
-    #                         Important: Return ONLY the raw JSON object without any markdown formatting or code blocks. No explanations, no headings, no extra text.
-    # """
 
     messages = [
         {
@@ -153,115 +146,20 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
 
     chat_response = client.chat.complete(
         model=model,
-        messages=messages
+        messages=messages,
     )
     output = chat_response.choices[0].message.content
-    # Remove ```json and ``` if present
-    # content = content.replace('```json', '').replace('```', '').strip()
-    # result = re.sub(r"^(?:json)?\s*|\s*$", "", output.strip())
     print(f"Response of extaction: {type(output)}")
     return output
 
-#     if user_prompt.strip():
-#             full_prompt = f"""
-#             {user_prompt.strip()}
-#     Text:
-#     {raw_text}
-
-#     Important: Return ONLY the JSON object. NO explanations, no headings,no extra text.
-#     """
-#     else:
-#         full_prompt = f"""
-#         You are an expert document parser specializing in commercial documents like invoices, bills, etc.Extract the following structured data from the document text:
-#                 - vendor_details: name, address, phone, email, website, PAN
-#                 - customer_details: name, address, contact, PAN (usually below vendor_details)
-#                 - invoice_details: bill_number, bill_date, transaction_date, mode_of_payment, finance_manager, authorized_signatory
-#                 - payment_details: total, in_words, discount, taxable_amount, vat, net_amount
-#                 - line_items (list): hs_code, description, qty, rate, amount
-#                     Rules:
-#                         1. Extract only the fields listed; do not guess or add extra fields.
-#                         2. If a field is missing, set its value as null.
-#                         3. Use context ('Vendor', 'Supplier', 'Bill To', 'Customer', etc.) to distinguish parties. If unclear, the first business is Vendor,                        the second is Customer.
-#                         4. Each line_item must include hs_code and description; qty, rate, and amount are optional.
-#                         5. Always return the result strictly in the following JSON structure.
-#                         6. PAN numbers are typically boxed or near labels like 'PAN No.', and follow a 9-digit (Nepal) format.
-
-#                         Return the structured data using this exact JSON format:
-#                         {{
-#                             "vendor_details": {{
-#                             "name": "...",
-#                             "address": "...", 
-#                             "phone": "...", 
-#                             "email": "...",
-#                             "website": "...",
-#                             "pan": "..."
-#                             }},
-#                             "customer_details": {{
-#                                 "name": "...",
-#                                 "address": "...",
-#                                 "contact": "...",
-#                                 "pan": "..."
-#                             }},
-#                             "invoice_details": {{
-#                                 "bill_number": "...",
-#                                 "bill_date": "...",
-#                                 "transaction_date": "...",
-#                                 "mode_of_payment": "...",
-#                                 "finance_manager": "...",
-#                                 "authorized_signatory": "..."
-#                             }},
-#                             "payment_details": {{
-#                                 "total": 0,
-#                                 "in_words": "...",
-#                                 "discount": 0,
-#                                 "taxable_amount": 0,
-#                                 "vat": 0,
-#                                 "net_amount": 0
-#                             }},
-#                             "line_items": [
-#                                 {{
-#                                 "hs_code": "...",
-#                                 "particulars": "...",
-#                                 "qty": "...",
-#                                 "rate": "...",
-#                                 "amount": "..."
-#                                 }}
-#                             ]
-#                             }}
-
-#                             Text:
-#                             {raw_text}
-
-#                             Important: Return ONLY the JSON object. No explanations, no headings, no extra text.
-#     """
-
-#     messages = [
-#         {
-#             "role": "user",
-#             "content": full_prompt
-#         }
-#     ]
-
-#     chat_response = client.chat.complete(
-#         model=model,
-#         messages=messages
-#     )
-#     return chat_response.choices[0].message.content
-#     content = chat_response.choices[0].message.content
-
-# #     # Remove ```json and ``` if present
-#     content = content.replace('```json', '').replace('```', '').strip()
-    
-#     return content
-
 def process_file(file_path, user_prompt="") -> OCRResponse:
-    if file_path.endswith(".pdf"):
+    if file_path.endswith(('.pdf', '.PDF')):
         text = extract_raw_text_from_pdf(file_path)
     else:
         return OCRResponse(status="failed", message="Unsupported file type")
     
     result = extract_vendor_details(text, user_prompt)
-    
+
     if isinstance(result, str):
         try:
             result = json.loads(result)  # convert JSON string to dict
