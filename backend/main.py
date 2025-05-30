@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
-from backend.classification import parse_invoice_json, classify_invoice, get_gemini_model, raw_json_string
+from backend.classification import parse_invoice_json, classify_invoice, get_gemini_model, raw_json_string, process_classification
 import os
 import shutil
 from .database import collection
@@ -10,18 +10,14 @@ from datetime import datetime
 import json
 from typing import Union
 
-# Global variable to store the most recent filename
 recent_filename = None
 
 app = FastAPI()
 
-# Get the current directory path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Set up Jinja2 for template rendering
 templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
 
-# Directory to store uploaded files
 UPLOAD_DIR = os.path.join(current_dir, "temp_files")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -43,11 +39,6 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         result = process_file(file_path, prompt or "")
         total_uploads = collection.count_documents({"file_name": {"$exists":True}})
 
-        # print(type(result.content))
-        # print(result.content)
-        # print(type(result.extracted_text))
-        # print(result.extracted_text)
-        
         if prompt:
             structure = {
                 "file_name": file.filename,
@@ -74,6 +65,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
         if result.status == "success":
             document = collection.find_one({"file_name": file.filename}, sort = [("uid", -1)])
             document_id = document["uid"]
+
             
             return JSONResponse(
                 status_code=200,
@@ -107,17 +99,24 @@ async def upload_file(request: Request, file: UploadFile = File(...), prompt: st
 
 @app.get("/text-extraction/pdf")
 async def get_all_extractions(file:str = None):
-    if file:
-        if not file.endswith('.pdf'):
-            filename = f"{file}.pdf"
-            document_find = list(collection.find(({"file_name": filename}), {'_id': 0}))
-            return {'documents': document_find}
-    else:
-        all_extractions = list(collection.find(({"file_name":{"$exists": True}}),{'_id':0,'default_prompt':0}))
-        # for item in all_extractions:
-        #     item['_id'] = str(item['_id'])
-        return {'documents': all_extractions}
-
+    try:
+        if file:
+            if not file.endswith('.pdf'):
+                filename = f"{file}.pdf"
+                document_find = list(collection.find(({"file_name": filename}), {'_id': 0}))
+                return {'documents': document_find}
+            else:
+                document_find = list(collection.find(({"file_name": file}), {'_id': 0}))
+                return {'documents': document_find}
+        else:
+            all_extractions = list(collection.find(({"file_name":{"$exists": True}}),{'_id':0,'default_prompt':0}))
+            # for item in all_extractions:
+            #     item['_id'] = str(item['_id'])
+            return {'documents': all_extractions}
+    except Exception as e:
+        return{
+            "message": "No file found"
+        }
 
 @app.delete("/delete/{file}")
 async def delete_extraction(file: str):
@@ -145,7 +144,7 @@ async def delete_extraction(file: str):
 async def update_prompt(doc_id: int, prompt: str):
     try:
         document = collection.find_one({
-            "document_id": doc_id,
+            "uid": doc_id,
             "prompt_type": "user_given_prompt"
         })
         
@@ -158,7 +157,7 @@ async def update_prompt(doc_id: int, prompt: str):
             )
         
         result = collection.update_one(
-            {"document_id": doc_id},
+            {"uid": doc_id},
             {"$set": {"prompt": prompt}}
         )
         
@@ -195,26 +194,23 @@ async def get_default_prompts():
 @app.get("/classification/{document_id}")
 async def classify_document(document_id: int):
     try:
-        # Get the document from MongoDB using document_id
-        document = collection.find_one({"uid": document_id},{"extracted_details":1, "_id": 0 })
-        raw = json.dumps(document)
-        invoice_data_dict = parse_invoice_json(raw)
 
-        if invoice_data_dict:
-            model = get_gemini_model()
-            classification_result = classify_invoice(invoice_data_dict, model)
-            print("\n📄 Document Type:", classification_result)
-                
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "success",
-                    "classification": classification_result,
-                    "document_id": document_id,
-                    "file_name": document.get("file_name"),
-                    "detail": raw
-                }
-            )
+        document_name = collection.find_one({"uid": document_id},{"file_name":1, "extracted_details": 1, "_id": 0 })
+
+        classification_result = process_classification(document_id)
+        print("\n📄 Document Type:", classification_result)
+        collection.update_one({"uid": document_id}, {"$set":  {"classification": classification_result }})
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "classification": classification_result,
+                "document_id": document_id,
+                "file_name": document_name["file_name"],
+                "extracted_details": document_name["extracted_details"]
+            }
+        )
     except Exception as e:
         return JSONResponse(
             status_code=500,

@@ -5,5 +5,5 @@ from typing import Dict, Union, Any
 class OCRResponse(BaseModel):
     status: str
     message: str
-    content: Union[Dict, str, Any]
+    content: Dict[str, Any]
     extracted_text: str

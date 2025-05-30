@@ -1,4 +1,5 @@
 import os
+import sys
 from mistralai import Mistral
 from dotenv import load_dotenv
 from .models import OCRResponse
@@ -6,9 +7,20 @@ from .database import collection, add_default_prompt
 import re, json
 
 load_dotenv()
-api_key = os.environ["MISTRAL_API_KEY"]
-client = Mistral(api_key=api_key)
-model="mistral-small-latest"
+try:
+    api_key = os.environ.get("MISTRAL_API_KEY").strip('"\'').strip() if os.environ.get("MISTRAL_API_KEY") else None
+    if not api_key:
+        raise ValueError("MISTRAL_API_KEY is not set or is empty in environment variables")
+    client = Mistral(api_key=api_key)
+    model = "mistral-small-latest"
+    print("✅ Successfully initialized Mistral client")
+except KeyError:
+    print("❌ Error: MISTRAL_API_KEY not found in environment variables")
+    print("Please make sure you have a .env file with MISTRAL_API_KEY set")
+    sys.exit(1)
+except Exception as e:
+    print(f"❌ Error initializing Mistral client: {e}")
+    sys.exit(1)
 
 def extract_raw_text_from_pdf(file_path):
     """Uploads the PDF and extracts raw text using Mistral."""
@@ -249,7 +261,18 @@ def process_file(file_path, user_prompt="") -> OCRResponse:
         return OCRResponse(status="failed", message="Unsupported file type")
     
     result = extract_vendor_details(text, user_prompt)
-
+    
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)  # convert JSON string to dict
+        except json.JSONDecodeError as e:
+            return OCRResponse(
+                status="error",
+                message=f"Failed to parse JSON from result: {e}",
+                content={},
+                extracted_text=text
+            )
+        
     return OCRResponse(
         status="success",
         message="Text extracted and structured successfully",
