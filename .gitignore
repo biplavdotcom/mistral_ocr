@@ -1,3 +1,4 @@
 /backend/.env
 .venv
 *.pyc
+/backend/temp_files
