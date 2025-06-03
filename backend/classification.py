@@ -1,4 +1,3 @@
-
 from IPython import get_ipython
 from IPython.display import display
 import os
@@ -8,9 +7,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from .database import collection
 from typing import Dict, Union, Optional
-
+import re
+import requests
+import pandas as pd
 # Load environment variables from .env file
 load_dotenv()
+
+
 total_uploads = collection.count_documents({"file_name": {"$exists":True}})
 
 # Get API key from environment variables
@@ -52,17 +55,27 @@ def classify_invoice(invoice_json: dict, model) -> str:
     Also checks for a specific net_amount condition.
     """
     # print("Classifying invoice...")
-    # First, check the net_amount condition directly in Python
     try:
-        grand_total = invoice_json.get("payment_details", {}).get("grand_total")
-        if grand_total is not None and grand_total < 2000:
-            print("Net amount is less than 2000, classifying as 'outgoing_payment'")
-            return "outgoing_payment"
-    except (TypeError, ValueError):
-        # Handle cases where net_amount is not a valid number
-        pass
+        total_amount = invoice_json.get("payment_details", {}).get("grand_total")
 
-    # If the net_amount condition is not met, use the model for classification
+        if total_amount is not None:
+            try:
+                cleaned_amount_str = re.sub(r'[^0-9.]', '', str(total_amount))
+                total_amount_float = float(cleaned_amount_str)
+
+                if total_amount_float < 2000:
+                    print("Grand total is less than 2000, classifying as 'outgoing_payment'")
+                    return "outgoing_payment"
+            except (ValueError, TypeError) as num_err:
+                 print(f"Could not convert grand_total to number: {total_amount} - {num_err}")
+                 # Continue to model classification if number conversion fails
+
+    except Exception as e:
+        # Catch any unexpected errors during the initial check
+        print(f"Error during grand_total check: {e}")
+        # Continue to model classification
+
+    # If the grand_total condition is not met or failed, use the model for classification
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a document classifier for SAP systems. Based on the invoice JSON data, classify the document into one of the following types:
 - ap_invoice
@@ -118,6 +131,7 @@ def process_classification(document_id: int):
         if not extracted_details:
             print(f"No 'extracted_details' field found for document ID: {document_id}")
             return "No extracted details found for this document."
+        
 
         # Check if extracted_details is a string (as it sometimes might be stored)
         # If it is a string, try to parse it as JSON
@@ -138,6 +152,7 @@ def process_classification(document_id: int):
              print(f"'extracted_details' for document ID {document_id} is not in a valid dictionary format after processing.")
              return "Extracted details are not in a valid dictionary format for classification."
 
+        
         # Get the Gemini model
         model = get_gemini_model()
 
@@ -151,4 +166,64 @@ def process_classification(document_id: int):
         print(f"An unexpected error occurred during classification for document ID {document_id}: {e}")
         return f"An internal error occurred: {str(e)}"
 
+def match_vendor_name(document_id: int):
+    try:
+        API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/sentence-similarity"
+        access_token = os.getenv("HF_API_KEY")
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+        }
+        df = pd.read_csv("./backend/assets/sap_fields.csv")
+        sap_fields = df.values.tolist()
 
+        def query(payload):
+            response = requests.post(API_URL, headers=headers, json=payload)
+            return response.json()
+        
+        document = collection.find_one({"uid": document_id}, {"extracted_details": 1, "_id": 0})
+        vendor_name = document.get("extracted_details", {}).get("vendor_details", {}).get("name")
+        print(f"\nOriginal vendor name: {vendor_name}")
+
+        # Get vendor list from database
+        # sap_vendor_list = vendors.find({}, {"Vendor name": 1, "_id": 0})
+        # vendor_name_list = [vendor["Vendor name"] for vendor in sap_vendor_list]
+        
+        vendor_name_list = [list[0] for list in sap_fields]
+
+        output = query({
+            "inputs": {
+                "source_sentence": vendor_name,
+                "sentences": vendor_name_list
+            }
+        })
+
+        if output and isinstance(output, list):
+            scores = output[0] if isinstance(output[0], list) else output
+            
+            if not isinstance(scores, list):
+                print(f"Unexpected scores format: {type(scores)}")
+                return
+
+            highest_score = max(scores)
+            best_index = scores.index(highest_score)
+            
+            best_match = vendor_name_list[best_index]
+            
+            print(f"\nBest match found:")
+            print(f"Vendor name: {best_match}")
+            print(f"Similarity score: {highest_score:.2%}")
+            print(f"Index in list: {best_index}")
+
+            collection.update_one(
+                {"uid": document_id},
+                {"$set": {"extracted_details.vendor_details.name": best_match}}
+            )
+            print(f"\nUpdated vendor name to: {best_match}")
+        else:
+            print(f"Invalid API response format: {type(output)}")
+            print(f"Response content: {output}")
+
+    except Exception as e:
+        print(f"An unexpected error occurred during vendor name matching for document ID {document_id}: {e}")
+        print(f"Error type: {type(e)}")
+        return f"An internal error occurred: {str(e)}"

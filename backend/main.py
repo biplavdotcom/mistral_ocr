@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from backend.ocr_processor import process_file  
-from backend.classification import parse_invoice_json, classify_invoice, get_gemini_model, raw_json_string, process_classification
+from backend.classification import parse_invoice_json, classify_invoice, get_gemini_model, raw_json_string, process_classification, match_vendor_name
 import os
 import shutil
 from .database import collection
@@ -155,6 +155,7 @@ async def update_prompt(doc_id: int, prompt: str):
                     "message": "Document not found or is not a user-given prompt document"
                 }
             )
+
         
         result = collection.update_one(
             {"uid": doc_id},
@@ -199,6 +200,7 @@ async def classify_document(document_id: int):
 
         classification_result = process_classification(document_id)
         print("\n📄 Document Type:", classification_result)
+        match_vendor_name(document_id)
         collection.update_one({"uid": document_id}, {"$set":  {"classification": classification_result }})
         
         return JSONResponse(
