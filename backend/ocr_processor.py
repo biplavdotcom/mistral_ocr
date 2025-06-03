@@ -89,7 +89,7 @@ Important: Return ONLY the raw JSON object without any markdown formatting or co
 
                         Return the standard structured JSON format shown below:
                         {{
-                            "vendor_details": {{
+                            "vendor_details": {{  
                               "name": "",
                               "address": "", 
                               "contact_number": "", 
